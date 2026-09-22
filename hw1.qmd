@@ -1,0 +1,279 @@
+---
+title: "hw1"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+```{r}
+data <- read.csv("data.csv")
+class(data)
+head(data)
+names(data)
+```
+
+```{r}
+nrow(data)
+length(unique(data$Cultivar))
+length(unique(data$Season))
+table(data$Season)
+```
+
+read_ods("cultivars-description.ods")
+
+```{r}
+library(readODS)
+cultivar_info <- read_ods("cultivars-description.ods")
+print(read_ods("cultivars-description.ods"), n = 40)
+```
+
+```{r}
+#correlation between plant height (PH) and grain yield (GY)
+cor(data$PH, data$GY)
+```
+
+```{r}
+# the correlation between PH and GY separately for each season
+cor(
+  data$PH[data$Season == 1],
+  data$GY[data$Season == 1]
+)
+
+cor(data$PH[data$Season == 2],
+    data$GY[data$Season == 2])
+```
+
+Season 1 has higher correlation.
+
+```{r}
+#the grain yield of the soybean observation with the greatest plant height
+max(data$PH)
+data$GY[which(data$PH == max(data$PH))]
+```
+
+```{r}
+#percentage of observations have a thousand seed weight (MHG) greater than the overall average thousand seed weight
+mean(data$MHG > mean(data$MHG))*100
+```
+
+percentage: 47.1875%
+
+```{r}
+#cultivar has the highest average grain yield
+avg_yield <- aggregate(GY ~ Cultivar, data = data, mean)
+avg_yield[which.max(avg_yield$GY), ]
+
+```
+
+```{r}
+#a table showing the average value of each quantitative variable
+quant_vars <- c("PH", "IFP", "NLP", "NGP", "NGL", "NS", "MHG", "GY")
+
+overall <- colMeans(data[, quant_vars])
+
+by_season <- aggregate(
+  data[, quant_vars],
+  by = list(Season = data$Season),
+  FUN = mean
+)
+
+overall_row <- data.frame(
+  Season = "Overall",
+  t(overall)
+)
+
+names(overall_row) <- c("Season", quant_vars)
+
+average_table <- rbind(
+  overall_row,
+  by_season
+)
+
+average_table
+```
+
+```{r}
+#a series of t-tests to examine whether the ngrain yield (GY) differs between the two seasons.
+aggregate(GY ~ Season, data = data, mean)
+t.test(GY ~ Season, data = data)
+```
+
+The null and alternative hypotheses are:
+$$
+H_0: \mu_1 - \mu_2 = 0
+$$
+$$
+H_A: \mu_1 - \mu_2 \ne 0
+$$
+
+where $\mu_1$and $$\mu_2$$are the mean grain yields for Season 1 and Season 2, respectively.
+
+The mean grain yield was 3428.452 in Season 1 and 3408.655 in Season 2. The two sample t test produced a p-value of 0.7255. Since the p-value is greater than 0.05, we fail to reject the null hypothesis. Thus, there is insufficient statistical evidence to conclude that the mean grain yield differs between the two seasons. The 95% confidence interval for the difference in means is (-91.16, 130.75), which includes zero and is consistent with this conclusion.
+
+```{r}
+#Import the data, Clean and simplify the variable names
+adult <- read.csv(
+  "adult.data",
+  header = FALSE,
+  strip.white = TRUE
+)
+
+lines <- readLines("old.adult.names")
+
+variable_names <- lines[
+  grepl("^[a-z]+(-[a-z]+)*:", lines)
+]
+
+variable_names <- sub(":.*", "", variable_names)
+variable_names[variable_names == "class"] <- "income"
+variable_names <- gsub("-", "_", variable_names)
+
+variable_names
+
+names(adult) <- variable_names
+```
+
+```{r}
+#Examine missing values
+adult[adult == "?"] <- NA
+colSums(is.na(adult))
+missing_counts <- data.frame(
+  variable = names(adult),
+  missing = colSums(is.na(adult))
+)
+
+missing_counts
+```
+
+```{r}
+#Restrict the sample to individuals working at least 10 hours per week
+nrow(adult)
+adult_filtered <- adult[adult$hours_per_week >= 10, ]
+nrow(adult_filtered)
+```
+
+```{r}
+#Remove observations with missing values for occupation, workclass, or native country
+adult_clean <- adult_filtered[
+  !is.na(adult_filtered$occupation) &
+  !is.na(adult_filtered$workclass) &
+  !is.na(adult_filtered$native_country),
+]
+
+nrow(adult_clean)
+```
+Because in R, most modeling and testing functions cannot handle missing values directly. And imputing missing occupation, workclass, or native country could introduce artificial patterns and bias the results.
+
+```{r}
+#Eliminate age less than 18, age greater than 90, education level identified as Preschool
+adult_final <- adult_clean[
+  adult_clean$age >= 18 &
+  adult_clean$age <= 90 &
+  adult_clean$education != "Preschool",
+]
+```
+
+```{r}
+#final sample size
+data.frame(
+  stage = c("Final sample"),
+  sample_size = c(
+    nrow(adult_final)
+  )
+)
+```
+
+```{r}
+#' Calculate the next value in the Happy Number sequence. 
+#' @param n A positive integer. 
+#' @return A positive integer equal to the sum of the squares of the digits of n.
+nextHappy <- function(n) {
+  if (!is.numeric(n) || length(n) != 1 || !is.finite(n) ||
+      n <= 0 || n != floor(n)) {
+    stop("n must be a positive integer.")
+  }
+  
+  digits <- as.numeric(strsplit(as.character(n), "")[[1]])
+  sum(digits^2)
+}
+
+nextHappy(19)
+nextHappy(82)
+
+```
+
+```{r}
+#' Generate a Happy Number sequence.
+#' This function starts with a positive integer and repeatedly uses nextHappy() to calculate the next value in the sequence. 
+#' The process stops when the sequence reaches 1 or when a value already in the sequence appears again.
+#'
+#' @param n A positive integer.
+#' @return A list containing:
+#'   \itemize{
+#'     \item sequence: a vector containing the values in the sequence.
+#'     \item isHappy: TRUE if the sequence reaches 1, and FALSE if
+#'       the sequence enters a cycle.
+#'   }
+happySequence <- function(n) {
+  if (!is.numeric(n) || length(n) != 1 || !is.finite(n) ||
+      n <= 0 || n != floor(n)) {
+    stop("n must be a positive integer.")
+  }
+  
+  sequence <- n
+  
+  while (TRUE) {
+    next_value <- nextHappy(n)
+    
+    if (next_value == 1) {
+      sequence <- c(sequence, next_value)
+      return(list(
+        sequence = sequence,
+        isHappy = TRUE
+      ))
+    }
+    
+    if (next_value %in% sequence) {
+      return(list(
+        isHappy = FALSE
+      ))
+    }
+    
+    sequence <- c(sequence, next_value)
+    n <- next_value
+  }
+}
+
+happySequence(19)
+happySequence(4)
+```
+
+```{r}
+is_happy <- sapply(1:1000, function(n) {
+  happySequence(n)$isHappy
+})
+
+happy_count <- sum(is_happy)
+
+happy_percentage <- happy_count / 1000 * 100
+
+sequence_lengths <- sapply(1:1000, function(n) {
+  result <- happySequence(n)
+  
+  if (result$isHappy) {
+    length(result$sequence)
+  } else {
+    NA
+  }
+})
+
+longest_start <- which.max(sequence_lengths)
+longest_length <- max(sequence_lengths, na.rm = TRUE)
+
+happy_count
+happy_percentage
+longest_start
+longest_length
+happySequence(longest_start)
+```
