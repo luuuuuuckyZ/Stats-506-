@@ -1,0 +1,560 @@
+---
+title: "506hw2"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+Problem 1 a
+
+```{r}
+momentum_walk <- function(n, p) {
+  # Check inputs
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("n must be a positive integer.")
+  }
+  
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("p must be between 0 and 1.")
+  }
+  
+  directions <- c("right", "left", "up", "down")
+  
+  x <- 0
+  y <- 0
+  
+  # step 1
+  current_direction <- sample(directions, 1)
+  
+  if (current_direction == "right") {
+    x <- x + 1
+  } else if (current_direction == "left") {
+    x <- x - 1
+  } else if (current_direction == "up") {
+    y <- y + 1
+  } else {
+    y <- y - 1
+  }
+  
+  # Steps 2 
+  if (n >= 2) {
+    for (i in 2:n) {
+      
+      if (runif(1) < p) {
+        new_direction <- current_direction
+      } else {
+        new_direction <- sample(directions, 1)
+      }
+      
+      if (new_direction == "right") {
+        x <- x + 1
+      } else if (new_direction == "left") {
+        x <- x - 1
+      } else if (new_direction == "up") {
+        y <- y + 1
+      } else {
+        y <- y - 1
+      }
+      
+      current_direction <- new_direction
+    }
+  }
+  
+  return(c(x, y))
+}
+```
+
+```{r}
+momentum_walk(10, 0.6)
+momentum_walk(10, 0.6)
+```
+
+Problem 1 b
+
+```{r}
+momentum_walk1 <- function(n, p) {
+  
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("n must be a positive integer.")
+  }
+  
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("p must be between 0 and 1.")
+  }
+  
+  directions <- c("right", "left", "up", "down")
+  
+  x <- 0
+  y <- 0
+  
+  current_direction <- sample(directions, 1)
+  
+  if (current_direction == "right") {
+    x <- x + 1
+  } else if (current_direction == "left") {
+    x <- x - 1
+  } else if (current_direction == "up") {
+    y <- y + 1
+  } else {
+    y <- y - 1
+  }
+  
+  if (n >= 2) {
+    for (i in 2:n) {
+      
+      if (runif(1) < p) {
+        new_direction <- current_direction
+      } else {
+        new_direction <- sample(directions, 1)
+      }
+      
+      if (new_direction == "right") {
+        x <- x + 1
+      } else if (new_direction == "left") {
+        x <- x - 1
+      } else if (new_direction == "up") {
+        y <- y + 1
+      } else {
+        y <- y - 1
+      }
+      
+      current_direction <- new_direction
+    }
+  }
+  
+  c(x, y)
+}
+
+momentum_walk2 <- function(n, p) {
+  
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("n must be a positive integer.")
+  }
+  
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("p must be between 0 and 1.")
+  }
+  
+  directions <- c("right", "left", "up", "down")
+  
+  # First step
+  first_direction <- sample(directions, 1)
+  
+  x <- 0
+  y <- 0
+  
+  if (first_direction == "right") {
+    x <- 1
+  } else if (first_direction == "left") {
+    x <- -1
+  } else if (first_direction == "up") {
+    y <- 1
+  } else {
+    y <- -1
+  }
+  
+  state <- list(
+    x = x,
+    y = y,
+    direction = first_direction
+  )
+  
+  if (n >= 2) {
+    
+    state <- Reduce(
+      function(state, i) {
+        
+        if (runif(1) < p) {
+          new_direction <- state$direction
+        } else {
+          new_direction <- sample(directions, 1)
+        }
+        
+        if (new_direction == "right") {
+          state$x <- state$x + 1
+        } else if (new_direction == "left") {
+          state$x <- state$x - 1
+        } else if (new_direction == "up") {
+          state$y <- state$y + 1
+        } else {
+          state$y <- state$y - 1
+        }
+        
+        state$direction <- new_direction
+        
+        return(state)
+      },
+      2:n,
+      init = state
+    )
+  }
+  
+  c(state$x, state$y)
+}
+```
+
+momentum_walk1() uses a for loop to simulate the random walk step by step. The first direction is randomly selected from the four possible directions. For each subsequent step, the particle keeps its previous direction with probability p; otherwise, a new direction is randomly selected. The position (x, y) and the current direction are updated after each step.
+momentum_walk2() uses Reduce(). It stores the current position and direction in state, and passes this state from one step to the next. At each step, the direction is determined using the same momentum rule, and the updated state is passed to the next step.
+Both functions return the final position (x, y). Since the walks are random, the two functions do not necessarily produce the same result.
+
+```{r}
+momentum_walk1(10, 0.6)
+
+momentum_walk2(10, 0.6)
+
+momentum_walk1(1000, 0.6)
+
+momentum_walk2(1000, 0.6)
+```
+
+Problem 1 c
+
+```{r}
+set.seed(111)
+momentum_walk1(10, 0.6)
+
+set.seed(111)
+momentum_walk1(10, 0.6)
+```
+
+I used set.seed() to control R's random-number generator. Setting the same seed before running the simulation function to the same initial state. Therefore, the same sequence of random choices is generated and the simulation produces the same final position.
+
+Problem 1 d
+
+```{r}
+set.seed(222)
+pos0 <- momentum_walk1(1000, 0)
+
+pos05 <- momentum_walk1(1000, 0.5)
+
+pos09 <- momentum_walk1(1000, 0.9)
+
+D0 <- sqrt(pos0[1]^2 + pos0[2]^2)
+
+D05 <- sqrt(pos05[1]^2 + pos05[2]^2)
+
+D09 <- sqrt(pos09[1]^2 + pos09[2]^2)
+
+c(
+  p_0 = D0,
+  p_0.5 = D05,
+  p_0.9 = D09
+)
+```
+
+Increasing the momentum probability generally increases the final distance from the origin. When $p$ is small, the direction changes frequently, so movements in opposite directions often counteract each other. When $p$ is large, the particle tends to continue moving in the same direction for several steps. This allows the particle to travel farther away from its starting point.
+
+Problem 1 e
+```{r}
+set.seed(333)
+
+p_values <- c(0, 0.25, 0.5, 0.75, 0.9)
+
+mean_distances <- sapply(p_values, function(p) {
+  
+  positions <- replicate(1000, momentum_walk1(1000, p))
+  
+  distances <- sqrt(positions[1, ]^2 + positions[2, ]^2)
+  
+  mean(distances)
+})
+
+results <- data.frame(
+  p = p_values,
+  mean_distance = mean_distances
+)
+
+results
+```
+The mean final distance increases as $p$ increases. A larger value of $p$ makes the particle more likely to continue moving in the same direction, so the walk has greater persistence and tends to travel farther from the starting point.
+
+Problem 1 f
+```{r}
+library(microbenchmark)
+
+benchmark_1000 <- microbenchmark(
+  walk1 = momentum_walk1(1000, 0.6),
+  walk2 = momentum_walk2(1000, 0.6),
+  times = 100
+)
+
+benchmark_1000
+
+benchmark_100000 <- microbenchmark(
+  walk1 = momentum_walk1(100000, 0.6),
+  walk2 = momentum_walk2(100000, 0.6),
+  times = 10
+)
+
+benchmark_100000
+```
+momentum_walk1() is faster than momentum_walk2() for both input sizes. For $n=1000$, the median execution times are about 2.96 and 4.86, respectively. For $n=100000$, the median execution times are about 321.51 and 498.73, respectively.
+The difference in execution time becomes much larger for the larger input. The difference in median execution time increases from about 1.90 for $n=1000$ to about 177.22 for $n=100000$.
+Because momentum_walk1() directly updates variables in a for loop, while momentum_walk2() uses Reduce() and repeatedly passes and updates a state list, which introduces additional computational overhead.
+
+Problem 2
+```{r}
+set.seed(444)
+
+n_days <- 10000
+
+morning <- matrix(
+  rpois(n_days * 3, lambda = 4),
+  nrow = n_days
+)
+
+peak_morning <- rnorm(
+  n_days,
+  mean = 45,
+  sd = sqrt(16)
+)
+
+midday <- matrix(
+  rpois(n_days * 6, lambda = 15),
+  nrow = n_days
+)
+
+peak_afternoon <- rnorm(
+  n_days,
+  mean = 55,
+  sd = sqrt(25)
+)
+
+evening <- matrix(
+  rpois(n_days * 6, lambda = 9),
+  nrow = n_days
+)
+
+daily_total <- rowSums(morning) +
+               peak_morning +
+               rowSums(midday) +
+               peak_afternoon +
+               rowSums(evening)
+
+mean(daily_total)
+```
+
+Problem 3 a
+```{r}
+youtube <- read.csv(
+  "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-02/youtube.csv"
+)
+```
+```{r}
+youtube_clean <- youtube[, c(
+  "year",
+  "funny",
+  "show_product_quickly",
+  "patriotic",
+  "celebrity",
+  "danger",
+  "animals",
+  "use_sex",
+  "view_count",
+  "like_count",
+  "dislike_count",
+  "favorite_count",
+  "comment_count"
+)]
+
+
+dim(youtube_clean)
+names(youtube_clean)
+```
+
+Problem 3 b
+```{r}
+summary(youtube_clean[, c(
+  "view_count",
+  "like_count",
+  "dislike_count",
+  "favorite_count",
+  "comment_count"
+)])
+
+par(mfrow = c(2, 3))
+
+hist(youtube_clean$view_count,
+     main = "View Count",
+     xlab = "View Count")
+
+hist(youtube_clean$like_count,
+     main = "Like Count",
+     xlab = "Like Count")
+
+hist(youtube_clean$dislike_count,
+     main = "Dislike Count",
+     xlab = "Dislike Count")
+
+hist(youtube_clean$favorite_count,
+     main = "Favorite Count",
+     xlab = "Favorite Count")
+
+hist(youtube_clean$comment_count,
+     main = "Comment Count",
+     xlab = "Comment Count")
+
+par(mfrow = c(1, 1))
+
+table(youtube_clean$favorite_count, useNA = "ifany")
+
+colSums(is.na(youtube_clean))
+```
+The distributions of view_count, like_count, dislike_count, and comment_count are strongly right-skewed, with a small number of extremely large values. Therefore, I classified these variables as Category 2 and applied a $\log(1+x)$ transformation before using them as outcomes in linear regression.
+favorite_count is classified as Category 3 because all 231 non-missing observations have a value of zero. Thus, it has no variation and is not appropriate as an outcome in a linear regression model.
+```{r}
+youtube_clean$log_view_count <-
+  log1p(youtube_clean$view_count)
+
+youtube_clean$log_like_count <-
+  log1p(youtube_clean$like_count)
+
+youtube_clean$log_dislike_count <-
+  log1p(youtube_clean$dislike_count)
+
+youtube_clean$log_comment_count <-
+  log1p(youtube_clean$comment_count)
+par(mfrow = c(2, 2))
+
+hist(youtube_clean$log_view_count,
+     main = "Log View Count",
+     xlab = "log(1 + View Count)")
+
+hist(youtube_clean$log_like_count,
+     main = "Log Like Count",
+     xlab = "log(1 + Like Count)")
+
+hist(youtube_clean$log_dislike_count,
+     main = "Log Dislike Count",
+     xlab = "log(1 + Dislike Count)")
+
+hist(youtube_clean$log_comment_count,
+     main = "Log Comment Count",
+     xlab = "log(1 + Comment Count)")
+
+par(mfrow = c(1, 1))
+```
+After applying the $\log(1+x)$  transformation, the distributions are substantially less right-skewed, especially for view and like counts. Therefore, the transformed variables are used as the outcomes in the subsequent linear regression analyses.
+
+Problem 3 c
+
+```{r}
+outcomes <- c(
+  "log_view_count",
+  "log_like_count",
+  "log_dislike_count",
+  "log_comment_count"
+)
+
+characteristics <- c(
+  "funny",
+  "show_product_quickly",
+  "patriotic",
+  "celebrity",
+  "danger",
+  "animals",
+  "use_sex"
+)
+
+results <- data.frame()
+
+for (outcome in outcomes) {
+  
+  for (characteristic in characteristics) {
+    
+    formula <- as.formula(
+      paste(outcome, "~", characteristic, "+ year")
+    )
+    
+    model <- lm(formula, data = youtube_clean)
+    
+    coef_table <- summary(model)$coefficients
+    
+    characteristic_row <- grep(
+      paste0("^", characteristic),
+      rownames(coef_table)
+    )
+    
+    results <- rbind(
+      results,
+      data.frame(
+        outcome = outcome,
+        characteristic = characteristic,
+        estimate = coef_table[characteristic_row, "Estimate"],
+        p_value = coef_table[characteristic_row, "Pr(>|t|)"]
+      )
+    )
+  }
+}
+
+results$direction <- ifelse(
+  results$estimate > 0,
+  "positive",
+  "negative"
+)
+
+# All 28 regression results
+results
+
+# Statistically significant results at alpha = 0.05
+significant_results <- results[
+  results$p_value < 0.05,
+]
+
+significant_results
+
+# Results for view counts
+view_results <- results[
+  results$outcome == "log_view_count",
+]
+
+view_results
+
+view_results[
+  which.max(view_results$estimate),
+]
+```
+None of the seven commercial characteristics have a statistically significant association with any of the four engagement outcomes at the $\alpha=0.05$ significance level, since all p-values are greater than 0.05.
+There are no statistically significant associations, so there are no significant positive or negative associations to report.
+danger has the largest positive estimated association with log-transformed view counts, with an estimated coefficient of approximately 0.667.
+
+Problem 3 d
+
+```{r}
+dat_d <- youtube_clean[
+  complete.cases(
+    youtube_clean[, c("log_view_count", "danger", "year")]
+  ),
+]
+
+y <- dat_d$log_view_count
+
+# Design matrix 
+X <- cbind(
+  intercept = 1,
+  danger = as.numeric(dat_d$danger),
+  year = dat_d$year
+)
+
+# OLS coefficients 
+beta_hat <- solve(t(X) %*% X) %*%
+            t(X) %*% y
+
+beta_hat
+
+# Fit the same model using lm()
+model_d <- lm(
+  log_view_count ~ danger + year,
+  data = dat_d
+)
+
+coef(model_d)
+
+# Compare the coefficients
+all.equal(
+  as.numeric(beta_hat),
+  as.numeric(coef(model_d))
+)
+```
+
