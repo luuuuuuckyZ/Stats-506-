@@ -1,0 +1,980 @@
+---
+title: "506hw3"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+## GitHub - luuuuuuckyZ/Stats-506-: stats506 coursework · GitHub
+
+1 (a)
+
+```{r}
+library(haven)
+library(knitr)
+
+aux <- as.data.frame(read_xpt("AUX_I.xpt"))
+demo <- as.data.frame(read_xpt("DEMO_I.xpt"))
+
+anyDuplicated(aux$SEQN)
+anyDuplicated(demo$SEQN)
+
+nhanes <- merge(
+  x = aux,
+  y = demo,
+  by = "SEQN",
+  all = FALSE
+)
+
+dimension_table <- data.frame(
+  Rows = nrow(nhanes),
+  Columns = ncol(nhanes)
+)
+
+kable(
+  dimension_table,
+  caption = "Dimensions of the merged data"
+)
+
+```
+
+1 （b）
+
+```{r}
+table(nhanes$RIAGENDR, useNA = "ifany")
+table(nhanes$DMDCITZN, useNA = "ifany")
+table(nhanes$DMDHHSZA, useNA = "ifany")
+table(nhanes$INDHHIN2, useNA = "ifany")
+
+nhanes$gender <- factor(
+  nhanes$RIAGENDR,
+  levels = c(1, 2),
+  labels = c("Male", "Female")
+)
+
+citizenship_code <- nhanes$DMDCITZN
+
+citizenship_code[
+  citizenship_code %in% c(7, 9)
+] <- NA
+
+nhanes$citizenship <- factor(
+  citizenship_code,
+  levels = c(1, 2),
+  labels = c("US citizen", "Not a US citizen")
+)
+
+nhanes$young_children <- factor(
+  nhanes$DMDHHSZA,
+  levels = c(0, 1, 2, 3),
+  labels = c("0", "1", "2", "3 or more")
+)
+
+income_code <- nhanes$INDHHIN2
+
+income_code[
+  income_code %in% c(77, 99)
+] <- NA
+
+nhanes$income_detail <- factor(
+  income_code,
+  levels = c(1:10, 14, 15, 13, 12),
+  labels = c(
+    "$0-4,999",
+    "$5,000-9,999",
+    "$10,000-14,999",
+    "$15,000-19,999",
+    "$20,000-24,999",
+    "$25,000-34,999",
+    "$35,000-44,999",
+    "$45,000-54,999",
+    "$55,000-64,999",
+    "$65,000-74,999",
+    "$75,000-99,999",
+    "$100,000 or more",
+    "Under $20,000 (broad category)",
+    "$20,000 or more (broad category)"
+  )
+)
+
+income_group <- rep(NA_character_, nrow(nhanes))
+
+income_group[
+  income_code %in% c(1, 2, 3, 4, 13)
+] <- "Under $20,000"
+
+income_group[
+  income_code %in% c(5:10, 12, 14, 15)
+] <- "$20,000 or more"
+
+nhanes$income <- factor(
+  income_group,
+  levels = c("Under $20,000", "$20,000 or more"),
+  ordered = TRUE
+)
+
+str(
+  nhanes[
+    c("gender", "citizenship", "young_children", "income")
+  ]
+)
+
+table(nhanes$gender, useNA = "ifany")
+table(nhanes$citizenship, useNA = "ifany")
+table(nhanes$young_children, useNA = "ifany")
+table(nhanes$income, useNA = "ifany")
+```
+
+1(c)
+
+Income was approximated using interval midpoints because the original survey data recorded household income only in categories rather than as exact continuous values. For the open-ended category of \$100,000 or more, \$125,000 was assigned as a representative value. The broad categories “under \$20,000” and “\$20,000 or more,” as well as refused, unknown, and missing responses, were treated as missing in the numeric income variable. Income was expressed in units of \$10,000. Observations with missing model variables were excluded from the corresponding models.
+
+```{r}
+# Prepare tympanometric width outcomes.
+nhanes$width_right <- as.numeric(nhanes$AUXTWIDR)
+nhanes$width_left <- as.numeric(nhanes$AUXTWIDL)
+
+nhanes$width_right[
+  nhanes$width_right %in% c(555, 777, 888)
+] <- NA
+
+nhanes$width_left[
+  nhanes$width_left %in% c(555, 777, 888)
+] <- NA
+nhanes$gender <- relevel(
+  nhanes$gender,
+  ref = "Male"
+)
+
+nhanes$children_num <- as.numeric(nhanes$DMDHHSZA)
+
+income_midpoints <- c(
+  "1" = 2500,
+  "2" = 7500,
+  "3" = 12500,
+  "4" = 17500,
+  "5" = 22500,
+  "6" = 30000,
+  "7" = 40000,
+  "8" = 50000,
+  "9" = 60000,
+  "10" = 70000,
+  "14" = 87500,
+  "15" = 125000
+)
+
+nhanes$income_10k <- unname(
+  income_midpoints[
+    as.character(nhanes$INDHHIN2)
+  ]
+) / 10000
+
+model_1R <- glm(
+  width_right ~ gender,
+  data = nhanes,
+  family = poisson(link = "log"),
+  na.action = na.omit
+)
+
+model_2R <- glm(
+  width_right ~ gender + citizenship + children_num + income_10k,
+  data = nhanes,
+  family = poisson(link = "log"),
+  na.action = na.omit
+)
+
+model_1L <- glm(
+  width_left ~ gender,
+  data = nhanes,
+  family = poisson(link = "log"),
+  na.action = na.omit
+)
+
+model_2L <- glm(
+  width_left ~ gender + citizenship + children_num + income_10k,
+  data = nhanes,
+  family = poisson(link = "log"),
+  na.action = na.omit
+)
+
+#'
+#' @param model A fitted Poisson glm object.
+#' @param model_name A character label identifying the model.
+#' @return A data frame of IRRs, Wald confidence intervals, and p-values.
+extract_irr <- function(model, model_name) {
+  coefficient_table <- coef(summary(model))
+
+  estimates <- coefficient_table[, "Estimate"]
+  standard_errors <- coefficient_table[, "Std. Error"]
+  critical_value <- qnorm(0.975)
+
+  data.frame(
+    Model = model_name,
+    Term = rownames(coefficient_table),
+    IRR = exp(estimates),
+    CI_lower = exp(estimates - critical_value * standard_errors),
+    CI_upper = exp(estimates + critical_value * standard_errors),
+    p_value = coefficient_table[, "Pr(>|z|)"],
+    row.names = NULL
+  )
+}
+
+irr_table <- rbind(
+  extract_irr(model_1R, "1R"),
+  extract_irr(model_2R, "2R"),
+  extract_irr(model_1L, "1L"),
+  extract_irr(model_2L, "2L")
+)
+
+term_labels <- c(
+  "(Intercept)" = "Intercept: exp(beta0)",
+  "genderFemale" = "Female vs Male",
+  "citizenshipNot a US citizen" = "Non-US citizen vs US citizen",
+  "children_num" = "Children: per additional child",
+  "income_10k" = "Income: per $10,000 increase"
+)
+
+irr_table$Term <- unname(
+  term_labels[irr_table$Term]
+)
+
+irr_display <- irr_table
+
+irr_display$p_value <- format.pval(
+  irr_display$p_value,
+  digits = 3,
+  eps = 0.001
+)
+
+knitr::kable(
+  irr_display,
+  digits = 3,
+  col.names = c(
+    "Model", "Coefficient", "IRR",
+    "95% CI lower", "95% CI upper", "p-value"
+  ),
+  caption = "Exponentiated coefficients from Poisson regression models"
+)
+
+#' Extract model fit statistics
+#'
+#' @param model A fitted Poisson glm object.
+#' @param model_name A character label identifying the model.
+#' @return A data frame containing sample size, McFadden R-squared, and AIC.
+extract_fit <- function(model, model_name) {
+  model_data <- model.frame(model)
+
+  null_model <- glm(
+    update(formula(model), . ~ 1),
+    data = model_data,
+    family = poisson(link = "log")
+  )
+
+  pseudo_r2 <- 1 -
+    as.numeric(logLik(model)) /
+    as.numeric(logLik(null_model))
+
+  data.frame(
+    Model = model_name,
+    N = nobs(model),
+    McFadden_R2 = pseudo_r2,
+    AIC = AIC(model)
+  )
+}
+
+fit_table <- rbind(
+  extract_fit(model_1R, "1R"),
+  extract_fit(model_2R, "2R"),
+  extract_fit(model_1L, "1L"),
+  extract_fit(model_2L, "2L")
+)
+
+knitr::kable(
+  fit_table,
+  digits = c(0, 0, 4, 2),
+  col.names = c("Model", "Sample size", "McFadden pseudo-R²", "AIC"),
+  caption = "Poisson model fit statistics"
+)
+
+```
+
+1(d)
+
+```{r}
+gender_result <- coef(summary(model_2L))[
+  "genderFemale",
+  ,
+  drop = FALSE
+]
+
+gender_result
+
+subset(
+  irr_table,
+  Model == "2L" & Term == "Female vs Male"
+)
+
+gender_predictions <- emmeans::emmeans(
+  model_2L,
+  ~ gender,
+  weights = "proportional"
+)
+
+summary(
+  gender_predictions,
+  type = "response"
+)
+
+gender_response <- emmeans::regrid(
+  gender_predictions,
+  transform = "response"
+)
+
+prediction_difference <- emmeans::contrast(
+  gender_response,
+  method = list("Female - Male" = c(-1, 1)),
+  adjust = "none"
+)
+
+prediction_test <- as.data.frame(
+  summary(
+    prediction_difference,
+    infer = c(TRUE, TRUE)
+  )
+)
+
+knitr::kable(
+  prediction_test,
+  digits = 3,
+  caption = "Adjusted difference in predicted left-ear width: Female minus Male"
+)
+```
+
+In model 2L, the female-to-male IRR was 1.0189 (95% CI: 1.0118–1.0262; Wald $z=5.215$, $p=1.84\times10^{-7}$). After adjustment for citizenship, number of children, and household income, females had approximately 1.9% greater predicted mean left-ear tympanometric width than males.
+
+The adjusted predicted means were 84.18 for males and 85.77 for females. The female-minus-male difference was 1.595 (95% CI: 0.996–2.194; $z=5.218$, $p<0.001$). Thus, we reject equality of the adjusted predicted means.
+
+2(a)
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(microbenchmark)
+library(knitr)
+
+db_path <- "C:/Users/Melody/Downloads/STATS 506/data/sakila_master.db"
+stopifnot(file.exists(db_path))
+
+con <- dbConnect(
+  RSQLite::SQLite(),
+  dbname = db_path,
+  flags = RSQLite::SQLITE_RO
+)
+
+```
+
+use R:
+
+```{r}
+#' Summarize customers by store using R
+#'
+#' @param con An open DBI database connection.
+#' @return A data frame of customer counts and active percentages by store.
+customers_r <- function(con) {
+  stores <- dbGetQuery(
+    con,
+    "SELECT store_id FROM store"
+  )
+
+  customers <- dbGetQuery(
+    con,
+    "SELECT customer_id, store_id, active FROM customer"
+  )
+
+  customers$active_count <- as.integer(customers$active == 1)
+
+  counts <- aggregate(
+    cbind(customer_id, active_count) ~ store_id,
+    data = customers,
+    FUN = length
+  )
+
+  active_counts <- aggregate(
+    active_count ~ store_id,
+    data = customers,
+    FUN = sum
+  )
+
+  result <- merge(
+    stores,
+    counts[c("store_id", "customer_id")],
+    by = "store_id",
+    all.x = TRUE
+  )
+
+  names(result)[2] <- "customer_count"
+
+  result <- merge(
+    result,
+    active_counts,
+    by = "store_id",
+    all.x = TRUE
+  )
+
+  result$customer_count[is.na(result$customer_count)] <- 0
+  result$active_count[is.na(result$active_count)] <- 0
+
+  result$active_percentage <- ifelse(
+    result$customer_count > 0,
+    100 * result$active_count / result$customer_count,
+    NA_real_
+  )
+
+  result <- result[
+    order(result$store_id),
+    c("store_id", "customer_count", "active_percentage")
+  ]
+
+  rownames(result) <- NULL
+  result
+}
+
+result_a_r <- customers_r(con)
+
+print(
+  knitr::kable(
+    result_a_r,
+    digits = 2,
+    col.names = c("Store ID", "Customers", "Active customers (%)"),
+    caption = "Customer counts and active percentages by store"
+  )
+)
+```
+
+use Sql:
+
+```{r}
+sql_a <- "
+SELECT
+  s.store_id,
+  COUNT(c.customer_id) AS customer_count,
+  100.0 * SUM(
+    CASE WHEN c.active = 1 THEN 1 ELSE 0 END
+  ) / NULLIF(COUNT(c.customer_id), 0) AS active_percentage
+FROM store AS s
+LEFT JOIN customer AS c
+  ON s.store_id = c.store_id
+GROUP BY s.store_id
+ORDER BY s.store_id
+"
+
+result_a_sql <- dbGetQuery(con, sql_a)
+```
+
+test and compare:
+
+```{r}
+all.equal(
+  result_a_r,
+  result_a_sql,
+  check.attributes = FALSE
+)
+
+benchmark_a <- microbenchmark(
+  R_operations = customers_r(con),
+  SQL_query = dbGetQuery(con, sql_a),
+  times = 100L
+)
+
+kable(
+  summary(benchmark_a, unit = "ms"),
+  digits = 3,
+  caption = "Runtime comparison for part (a), in milliseconds"
+)
+```
+
+Both approaches produced the same results. Across 100 runs per approach, the median runtime was 4.181 ms for the R approach and 0.779 ms for the SQL approach. Thus, the SQL approach was approximately 5.37 times as fast based on median runtime.
+
+2(b)
+
+use R:
+
+```{r}
+#' Find staff names and countries using R joins
+#'
+#' @param con An open DBI database connection.
+#' @return A data frame containing staff IDs, names, and countries.
+staff_r <- function(con) {
+  staff <- dbGetQuery(
+    con,
+    "SELECT staff_id, first_name, last_name, address_id FROM staff"
+  )
+
+  addresses <- dbGetQuery(
+    con,
+    "SELECT address_id, city_id FROM address"
+  )
+
+  cities <- dbGetQuery(
+    con,
+    "SELECT city_id, country_id FROM city"
+  )
+
+  countries <- dbGetQuery(
+    con,
+    "SELECT country_id, country FROM country"
+  )
+
+  result <- merge(staff, addresses, by = "address_id")
+  result <- merge(result, cities, by = "city_id")
+  result <- merge(result, countries, by = "country_id")
+
+  result$name <- paste(result$first_name, result$last_name)
+
+  result <- result[
+    order(result$staff_id),
+    c("staff_id", "name", "country")
+  ]
+
+  rownames(result) <- NULL
+  result
+}
+
+result_b_r <- staff_r(con)
+
+kable(
+  result_b_r,
+  col.names = c("Staff ID", "Name", "Country"),
+  caption = "Staff names and countries"
+)
+```
+
+use Sql:
+
+```{r}
+sql_b <- "
+SELECT
+  s.staff_id,
+  s.first_name || ' ' || s.last_name AS name,
+  co.country
+FROM staff AS s
+JOIN address AS a
+  ON s.address_id = a.address_id
+JOIN city AS ci
+  ON a.city_id = ci.city_id
+JOIN country AS co
+  ON ci.country_id = co.country_id
+ORDER BY s.staff_id
+"
+
+result_b_sql <- dbGetQuery(con, sql_b)
+```
+
+check and compare:
+
+```{r}
+all.equal(
+  result_b_r,
+  result_b_sql,
+  check.attributes = FALSE
+)
+
+benchmark_b <- microbenchmark(
+  R_operations = staff_r(con),
+  SQL_query = dbGetQuery(con, sql_b),
+  times = 100L
+)
+
+kable(
+  summary(benchmark_b, unit = "ms"),
+  digits = 3,
+  caption = "Runtime comparison for part (b), in milliseconds"
+)
+```
+
+Both approaches produced the same results. Across 100 runs per approach, the median runtime was 4.528 ms for the R approach and 0.721 ms for the SQL approach. Thus, the SQL approach was approximately 6.28 times as fast based on median runtime.
+
+2(c)
+
+use R:
+
+```{r}
+#' Find films with the highest payment total for a single rental
+#'
+#' @param con An open DBI database connection.
+#' @return A data frame containing film IDs, titles, and maximum rental value.
+films_r <- function(con) {
+  payments <- dbGetQuery(
+    con,
+    "SELECT rental_id, amount
+     FROM payment
+     WHERE rental_id IS NOT NULL"
+  )
+
+  rentals <- dbGetQuery(
+    con,
+    "SELECT rental_id, inventory_id FROM rental"
+  )
+
+  inventory <- dbGetQuery(
+    con,
+    "SELECT inventory_id, film_id FROM inventory"
+  )
+
+  films <- dbGetQuery(
+    con,
+    "SELECT film_id, title FROM film"
+  )
+
+  rental_values <- aggregate(
+    amount ~ rental_id,
+    data = payments,
+    FUN = sum
+  )
+
+  highest_value <- max(rental_values$amount)
+
+  highest_rentals <- rental_values[
+    rental_values$amount == highest_value,
+    ,
+    drop = FALSE
+  ]
+
+  result <- merge(highest_rentals, rentals, by = "rental_id")
+  result <- merge(result, inventory, by = "inventory_id")
+  result <- merge(result, films, by = "film_id")
+
+  result <- unique(result[c("film_id", "title", "amount")])
+
+  names(result)[3] <- "rental_value"
+
+  result <- result[order(result$film_id), ]
+  rownames(result) <- NULL
+  result
+}
+
+result_c_r <- films_r(con)
+
+kable(
+  result_c_r,
+  digits = 2,
+  col.names = c("Film ID", "Title", "Rental value (USD)"),
+  caption = "Films with the highest single-rental value"
+)
+```
+
+use Sql:
+
+```{r}
+sql_c <- "
+WITH rental_values AS (
+  SELECT
+    rental_id,
+    SUM(amount) AS rental_value
+  FROM payment
+  WHERE rental_id IS NOT NULL
+  GROUP BY rental_id
+)
+SELECT DISTINCT
+  f.film_id,
+  f.title,
+  rv.rental_value
+FROM rental_values AS rv
+JOIN rental AS r
+  ON rv.rental_id = r.rental_id
+JOIN inventory AS i
+  ON r.inventory_id = i.inventory_id
+JOIN film AS f
+  ON i.film_id = f.film_id
+WHERE rv.rental_value = (
+  SELECT MAX(rental_value)
+  FROM rental_values
+)
+ORDER BY f.film_id
+"
+
+result_c_sql <- dbGetQuery(con, sql_c)
+```
+
+check and compare:
+
+```{r}
+all.equal(
+  result_c_r,
+  result_c_sql,
+  check.attributes = FALSE
+)
+
+benchmark_c <- microbenchmark(
+  R_operations = films_r(con),
+  SQL_query = dbGetQuery(con, sql_c),
+  times = 100L
+)
+
+kable(
+  summary(benchmark_c, unit = "ms"),
+  digits = 3,
+  caption = "Runtime comparison for part (c), in milliseconds"
+)
+```
+
+Both approaches produced the same results. Across 100 runs per approach, the median runtime was 198.486 ms for the R approach and 10.804 ms for the SQL approach. Thus, the SQL approach was approximately 18.37 times as fast based on median runtime.
+
+```{r}
+dbDisconnect(con)
+```
+
+3(a)
+
+```{r}
+australia <- read.csv(
+  "C:/Users/Melody/Downloads/STATS 506/data/au-500.csv",
+  colClasses = "character",
+  stringsAsFactors = FALSE
+)
+
+names(australia)
+head(australia)
+```
+
+```{r}
+web <- tolower(trimws(australia$web))
+
+# Remove any trailing slashes.
+web <- sub("/+$", "", web)
+
+valid_web <- !is.na(web) & nzchar(web)
+
+is_com <- grepl("\\.com$", web[valid_web])
+
+result_a <- data.frame(
+  Valid_websites = sum(valid_web),
+  Com_websites = sum(is_com),
+  Percentage = 100 * mean(is_com)
+)
+
+knitr::kable(
+  result_a,
+  digits = 2,
+  caption = "Percentage of websites ending in .com"
+)
+```
+
+None of the 500 websites ended in `.com`, excluding domains such as `.com.au`. Therefore, the percentage was 0%.
+
+3(b)
+
+```{r}
+email <- tolower(trimws(australia$email))
+
+valid_email <- !is.na(email) &
+  grepl("^[^@[:space:]]+@[^@[:space:]]+$", email)
+
+email_domains <- sub(
+  "^.*@",
+  "",
+  email[valid_email]
+)
+
+domain_counts <- sort(
+  table(email_domains),
+  decreasing = TRUE
+)
+
+most_common_domains <- domain_counts[
+  domain_counts == max(domain_counts)
+]
+
+result_b <- data.frame(
+  Domain = names(most_common_domains),
+  Count = as.integer(most_common_domains)
+)
+
+knitr::kable(
+  result_b,
+  caption = "Most common email domain(s)"
+)
+```
+
+3(c)
+
+```{r}
+company <- australia$company_name
+
+valid_company <- !is.na(company) & nzchar(trimws(company))
+
+has_nonletter <- grepl(
+  "[^[:alpha:][:space:],]",
+  company[valid_company]
+)
+
+has_nonletter_no_amp <- grepl(
+  "[^[:alpha:][:space:],&]",
+  company[valid_company]
+)
+
+result_c <- data.frame(
+  Rule = c(
+    "Exclude commas and whitespace",
+    "Exclude commas, whitespace, and ampersands"
+  ),
+  Count = c(
+    sum(has_nonletter),
+    sum(has_nonletter_no_amp)
+  ),
+  Proportion = c(
+    mean(has_nonletter),
+    mean(has_nonletter_no_amp)
+  )
+)
+
+knitr::kable(
+  result_c,
+  digits = 4,
+  caption = "Company names containing eligible non-alphabetic characters"
+)
+```
+
+3(d)
+
+```{r}
+#' Format ten-digit phone numbers in a 4-3-3 pattern
+#'
+#' @param x A character vector of phone numbers.
+#' @return A character vector formatted as XXXX-XXX-XXX.
+format_phone <- function(x) {
+  digits <- gsub("[^0-9]", "", x)
+
+  invalid <- !is.na(digits) & nchar(digits) != 10
+
+  if (any(invalid)) {
+    stop("Some phone numbers do not contain exactly 10 digits.")
+  }
+
+  sub(
+    "^([0-9]{4})([0-9]{3})([0-9]{3})$",
+    "\\1-\\2-\\3",
+    digits
+  )
+}
+
+australia$phone1_cell <- format_phone(australia$phone1)
+australia$phone2_cell <- format_phone(australia$phone2)
+
+result_d <- head(
+  australia[c("phone1_cell", "phone2_cell")],
+  10
+)
+
+knitr::kable(
+  result_d,
+  col.names = c("Phone 1", "Phone 2"),
+  caption = "First ten phone numbers in 4-3-3 format"
+)
+```
+
+3(e)
+
+```{r}
+addresses <- trimws(australia$address)
+
+has_apartment <- !is.na(addresses) &
+  grepl("[0-9]+$", addresses)
+
+apartment_number <- rep(
+  NA_real_,
+  nrow(australia)
+)
+
+apartment_number[has_apartment] <- as.numeric(
+  sub(
+    "^.*?([0-9]+)$",
+    "\\1",
+    addresses[has_apartment],
+    perl = TRUE
+  )
+)
+
+australia$apartment_number <- apartment_number
+
+knitr::kable(
+  head(australia[c("address", "apartment_number")], 10),
+  caption = "Examples of extracted apartment numbers"
+)
+
+positive_apartments <- apartment_number[
+  !is.na(apartment_number) & apartment_number > 0
+]
+
+hist(
+  log(positive_apartments),
+  breaks = 20,
+  main = "Log of apartment numbers",
+  xlab = "Natural log of apartment number",
+  ylab = "Frequency",
+  col = "lightblue",
+  border = "white"
+)
+```
+
+3(f)
+
+```{r}
+leading_digit <- as.integer(
+  substr(
+    as.character(positive_apartments),
+    start = 1,
+    stop = 1
+  )
+)
+
+observed_counts <- table(
+  factor(leading_digit, levels = 1:9)
+)
+
+benford_prob <- log10(1 + 1 / (1:9))
+
+result_f <- data.frame(
+  Leading_digit = 1:9,
+  Observed_count = as.integer(observed_counts),
+  Observed_proportion = as.integer(observed_counts) /
+    sum(observed_counts),
+  Benford_proportion = benford_prob
+)
+
+knitr::kable(
+  result_f,
+  digits = 4,
+  caption = "Observed leading digits compared with Benford's law"
+)
+
+comparison <- rbind(
+  Observed = result_f$Observed_proportion,
+  Benford = result_f$Benford_proportion
+)
+
+barplot(
+  comparison,
+  beside = TRUE,
+  names.arg = 1:9,
+  col = c("steelblue", "orange"),
+  legend.text = rownames(comparison),
+  args.legend = list(x = "topright", bty = "n"),
+  main = "Leading digits of apartment numbers",
+  xlab = "Leading digit",
+  ylab = "Proportion",
+  ylim = c(0, max(comparison) * 1.25)
+)
+
+benford_test <- chisq.test(
+  x = as.integer(observed_counts),
+  p = benford_prob
+)
+
+benford_test
+```
+
+The leading digits of the 130 positive apartment numbers do not appear to follow Benford’s law. For example, only 9.23% begin with 1, compared with the expected 30.10%, while 14.62% begin with 9, compared with the expected 4.58%. A chi-squared goodness-of-fit test rejects the Benford distribution, $chi^2(8)=62.268$, $p=1.67\times10^{-10}$.
+
+These numbers would not pass a Benford-based screening. However, apartment numbers are assigned identifiers and need not follow Benford’s law even when genuine. Therefore, this result alone cannot establish that the data are fabricated.
