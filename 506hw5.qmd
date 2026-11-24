@@ -1,0 +1,465 @@
+---
+title: "506hw5"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+## GitHub - luuuuuuckyZ/Stats-506-: stats506 coursework · GitHub
+
+## 1
+
+```{r}
+library(methods)
+
+setClass(
+  "waldCI",
+  slots = c(lb = "numeric", ub = "numeric", level = "numeric"),
+  prototype = list(lb = 0, ub = 0, level = 0.95)
+)
+
+is_finite_number <- function(x) {
+  is.numeric(x) && is.null(dim(x)) &&
+    length(x) == 1L && is.finite(x)
+}
+
+setValidity("waldCI", function(object) {
+  if (!is_finite_number(object@lb) ||
+      !is_finite_number(object@ub)) {
+    return("Both bounds must be single finite numbers.")
+  }
+
+  if (object@lb > object@ub) {
+    return("The lower bound must not exceed the upper bound.")
+  }
+
+  if (!is_finite_number(object@level) ||
+      object@level <= 0 || object@level >= 1) {
+    return("The confidence level must be strictly between 0 and 1.")
+  }
+
+  TRUE
+})
+```
+
+```{r}
+wald_z <- function(level) {
+  alpha <- 1 - level
+  qnorm(alpha / 2, lower.tail = FALSE)
+}
+
+make_wald_ci <- function(level, mean = NULL, sterr = NULL,
+                         lb = NULL, ub = NULL) {
+  if (!is_finite_number(level) || level <= 0 || level >= 1) {
+    stop("The confidence level must be strictly between 0 and 1.")
+  }
+
+  has_estimate <- !is.null(mean) || !is.null(sterr)
+  has_bounds <- !is.null(lb) || !is.null(ub)
+
+  if (has_estimate == has_bounds) {
+    stop("Supply either mean and sterr, or lb and ub.")
+  }
+
+  if (has_estimate) {
+    if (!is_finite_number(mean) || !is_finite_number(sterr)) {
+      stop("Mean and standard error must both be single finite numbers.")
+    }
+    if (sterr < 0) {
+      stop("Standard error must be nonnegative.")
+    }
+
+    half_width <- wald_z(level) * sterr
+    lb <- mean - half_width
+    ub <- mean + half_width
+  } else if (is.null(lb) || is.null(ub)) {
+    stop("Supply both lb and ub.")
+  }
+
+  new("waldCI", lb = lb, ub = ub, level = level)
+}
+```
+
+```{r}
+setGeneric("lb", function(x) standardGeneric("lb"))
+setGeneric("ub", function(x) standardGeneric("ub"))
+setGeneric("sterr", function(x) standardGeneric("sterr"))
+setGeneric("level", function(x) standardGeneric("level"))
+
+setMethod("lb", "waldCI", function(x) x@lb)
+setMethod("ub", "waldCI", function(x) x@ub)
+setMethod("level", "waldCI", function(x) x@level)
+
+setMethod("mean", "waldCI", function(x, ...) {
+  lb(x) / 2 + ub(x) / 2
+})
+
+setMethod("sterr", "waldCI", function(x) {
+  half_width <- ub(x) / 2 - lb(x) / 2
+  half_width / wald_z(level(x))
+})
+
+setMethod("show", "waldCI", function(object) {
+  cat(sprintf(
+    "%g%% Wald CI: [%.6f, %.6f]\n",
+    100 * level(object), lb(object), ub(object)
+  ))
+})
+
+setGeneric("as.numeric")
+setMethod("as.numeric", "waldCI", function(x, ...) {
+  c(lb(x), ub(x))
+})
+```
+
+```{r}
+setGeneric("lb<-", function(x, value) standardGeneric("lb<-"))
+setGeneric("ub<-", function(x, value) standardGeneric("ub<-"))
+setGeneric("mean<-", function(x, value) standardGeneric("mean<-"))
+setGeneric("sterr<-", function(x, value) standardGeneric("sterr<-"))
+setGeneric("level<-", function(x, value) standardGeneric("level<-"))
+
+setReplaceMethod("lb", "waldCI", function(x, value) {
+  x@lb <- value
+  validObject(x)
+  x
+})
+
+setReplaceMethod("ub", "waldCI", function(x, value) {
+  x@ub <- value
+  validObject(x)
+  x
+})
+
+setReplaceMethod("mean", "waldCI", function(x, value) {
+  make_wald_ci(level(x), mean = value, sterr = sterr(x))
+})
+
+setReplaceMethod("sterr", "waldCI", function(x, value) {
+  make_wald_ci(level(x), mean = mean(x), sterr = value)
+})
+
+setReplaceMethod("level", "waldCI", function(x, value) {
+  make_wald_ci(value, mean = mean(x), sterr = sterr(x))
+})
+```
+
+```{r}
+setGeneric("contains", function(x, value) standardGeneric("contains"))
+
+setMethod("contains", "waldCI", function(x, value) {
+  if (!is_finite_number(value)) {
+    stop("Value must be a single finite number.")
+  }
+  lb(x) <= value && value <= ub(x)
+})
+
+setGeneric("overlap", function(x, y) standardGeneric("overlap"))
+
+setMethod("overlap", c(x = "waldCI", y = "waldCI"), function(x, y) {
+  max(lb(x), lb(y)) <= min(ub(x), ub(y))
+})
+
+setGeneric("transformCI", function(x, fun) standardGeneric("transformCI"))
+
+setMethod("transformCI", c(x = "waldCI", fun = "function"),
+          function(x, fun) {
+  warning("Only functions monotonic over the whole interval make sense.")
+
+  points <- seq(lb(x), ub(x), length.out = 101L)
+  transformed <- vapply(points, function(point) {
+    value <- fun(point)
+    if (!is_finite_number(value)) {
+      stop("The function must return a single finite number at each point.")
+    }
+    as.double(value)
+  }, numeric(1))
+
+  changes <- diff(transformed)
+  if (!(all(changes >= 0) || all(changes <= 0))) {
+    stop("The function is not monotonic on the sampled points.")
+  }
+
+  ends <- transformed[c(1L, length(transformed))]
+  make_wald_ci(level(x), lb = min(ends), ub = max(ends))
+})
+```
+
+```{r}
+ci1 <- make_wald_ci(0.95, lb = 17.2, ub = 24.7)
+ci2 <- make_wald_ci(0.99, mean = 13, sterr = 2.5)
+ci3 <- make_wald_ci(0.75, lb = 27.43, ub = 39.22)
+
+ci1
+ci2
+ci3
+as.numeric(ci1)
+as.numeric(ci2)
+as.numeric(ci3)
+lb(ci2)
+ub(ci2)
+mean(ci1)
+sterr(ci3)
+level(ci2)
+
+lb(ci2) <- 10.5
+mean(ci3) <- 34
+level(ci3) <- 0.8
+
+contains(ci1, 17)
+contains(ci3, 44)
+overlap(ci1, ci2)
+
+eci1 <- transformCI(ci1, sqrt)
+eci1
+mean(transformCI(ci2, log))
+```
+
+```{r}
+try(make_wald_ci(0.95, mean = 13, sterr = -2.5))
+
+try(make_wald_ci(0.95, lb = 25, ub = 17))
+
+try(make_wald_ci(0.95, lb = 17, ub = Inf))
+
+try(lb(ci1) <- 30)
+
+```
+
+## 2
+
+a
+
+```{r}
+library(data.table)
+tennis <- fread("atp_matches_2019.csv")
+
+tournament_counts <- tennis[, .(
+  raw_event_ids = uniqueN(tourney_id),
+  tournaments = uniqueN(sub("^Davis Cup.*", "Davis Cup", tourney_name)),
+  events_with_singles_final = uniqueN(tourney_id[round == "F"])
+)]
+
+tournament_counts
+```
+
+There are only 69 unique tournaments.
+
+b
+
+```{r}
+last_matches <- tennis[
+  order(tourney_name, -match_num),
+  .SD[1L],
+  by = tourney_name
+]
+
+multiple_winners <- last_matches[
+  , .(wins = .N), by = winner_name
+][wins > 1][order(-wins, winner_name)]
+
+multiple_winners[, .(players_with_multiple_wins = .N)]
+multiple_winners[wins == max(wins)]
+```
+
+17 players win multiple tournaments. Rafael Nadal wins most with 9 tournaments.
+
+```{r}
+ace_summary <- tennis[
+  !is.na(w_ace) & !is.na(l_ace),
+  {
+    ace_diff <- w_ace - l_ace
+
+    .(
+      matches = .N,
+      mean_winner_aces = mean(w_ace),
+      mean_loser_aces = mean(l_ace),
+      mean_diff = mean(ace_diff),
+      winner_more = sum(ace_diff > 0),
+      loser_more = sum(ace_diff < 0),
+      pct_winner_more = 100 * mean(ace_diff > 0)
+    )
+  }
+]
+
+knitr::kable(ace_summary, digits = 2)
+```
+
+Yes. Among the 2,694 matches with ace counts for both players, winners served 1.7 more aces per match on average.
+
+d
+
+```{r}
+player_matches <- melt(
+  tennis,
+  measure.vars = c("winner_name", "loser_name"),
+  variable.name = "outcome",
+  value.name = "player"
+)
+
+player_matches[, winner := outcome == "winner_name"]
+
+win_rates <- player_matches[
+  , .(matches = .N, winrate = mean(winner)),
+  by = player
+]
+
+win_rates[matches > 5][order(-winrate)][1:2]
+```
+
+Only one player has the highest win-rate,which is Rafael Nadal.
+
+## 3
+
+a
+
+```{r}
+library(plotly)
+library(tidyverse)
+library(lubridate)
+covid_url <- paste0(
+  "https://raw.githubusercontent.com/nytimes/covid-19-data/",
+  "refs/heads/master/rolling-averages/us-states.csv"
+)
+
+covid <- read_csv(covid_url, show_col_types = FALSE) |>
+  filter(state %in% state.name)
+
+glimpse(covid)
+
+monthly_cases <- covid|>
+  group_by(date)|>
+  summarise(us_cases_avg = sum(cases_avg), .groups = "drop")|>
+  mutate(month = floor_date(date, unit = "month"))|>
+  group_by(month)|>
+  summarise(
+    daily_average = mean(us_cases_avg),
+    days_observed = n(),
+    .groups = "drop"
+  )|>
+  filter(days_observed == days_in_month(month))|>
+  arrange(month)
+
+peaks <- monthly_cases|>
+  filter(
+    daily_average > lag(daily_average),
+    daily_average > lead(daily_average)
+  )|>
+  mutate(size = if_else(daily_average >= 100000, "Major", "Minor"))
+
+peaks|>
+  select(month, daily_average, size)
+
+peaks|>
+  count(size)
+
+plot_ly(monthly_cases, x = ~month, y = ~daily_average) |>
+  add_lines() |>
+  plotly::layout(
+    title = "COVID-19 case peaks across the 50 U.S. states",
+    xaxis = list(title = "Month"),
+    yaxis = list(title = "Monthly mean of daily reported cases")
+  )
+```
+
+b
+
+```{r}
+state_totals <- covid|>
+  group_by(state)|>
+  summarise(
+    approx_cases_per_100k = sum(cases_avg_per_100k),
+    .groups = "drop"
+  )|>
+  arrange(desc(approx_cases_per_100k))
+
+extreme_states <- bind_rows(
+  state_totals|>slice_head(n = 1),
+  state_totals|>slice_tail(n = 1)
+)
+
+extreme_states
+
+extreme_series <- covid |>
+  dplyr::filter(state %in% extreme_states$state) |>
+  dplyr::arrange(state, date)
+
+plot_b <- plot_ly(
+  data = extreme_series,
+  x = ~date,
+  y = ~cases_avg_per_100k,
+  color = ~state,
+  colors = c(Maine = "blue", "Rhode Island" = "orange")
+) |>
+  add_lines(
+    line = list(width = 2),
+    hovertemplate = "%{x|%b %d, %Y}<br>%{y:.1f} cases per 100,000"
+  ) |>
+  plotly::layout(
+    title = "COVID-19 case trajectories in Rhode Island and Maine",
+    xaxis = list(title = "Date", tickformat = "%b %Y"),
+    yaxis = list(title = "Daily cases per 100,000 (7-day average)"),
+    legend = list(orientation = "h", x = 0, y = 1.12)
+  )
+
+plot_b
+```
+
+c
+
+```{r}
+onset_dates <- covid|>
+  arrange(state, date)|>
+  group_by(state)|>
+  mutate(
+    above_threshold = cases_avg_per_100k >= 5,
+    run_id = consecutive_id(above_threshold)
+  )|>
+  group_by(state, run_id, above_threshold)|>
+  summarise(
+    start_date = min(date),
+    run_days = n(),
+    .groups = "drop"
+  )|>
+  filter(above_threshold, run_days >= 7)|>
+  group_by(state)|>
+  summarise(onset_date = min(start_date), .groups = "drop")
+
+early_states <- onset_dates|>
+  slice_min(onset_date, n = 5, with_ties = TRUE)|>
+  arrange(onset_date, state)
+
+early_states
+
+early_series <- covid |>
+  filter(
+    state %in% early_states$state,
+    between(date, as.Date("2020-03-10"), as.Date("2020-04-10"))
+  )
+
+plot_c <- ggplot(early_series, aes(x = date, y = cases_avg_per_100k)) +
+  geom_line(colour = "blue", linewidth = 0.9) +
+  geom_hline(yintercept = 5, linetype = "dashed", colour = "grey") +
+  geom_vline(
+    data = early_states,
+    aes(xintercept = onset_date),
+    colour = "red",
+    linewidth = 0.7
+  ) +
+  facet_wrap(
+    vars(factor(state, levels = early_states$state)),
+    ncol = 3
+  ) +
+  scale_x_date(date_breaks = "1 week", date_labels = "%Y-%m") +
+  labs(
+    title = "The earliest sustained increases in reported COVID-19 cases",
+    subtitle = "Red line marks the first day of seven consecutive days at or above 5",
+    x = NULL,
+    y = "Daily reported cases per 100,000 (7-day average)",
+    caption = "Source: The New York Times COVID-19 data. Two states tied for fifth."
+  ) +
+  theme_minimal(base_size = 12)
+
+plotly::ggplotly(plot_c, tooltip = c("x", "y"))
+```
